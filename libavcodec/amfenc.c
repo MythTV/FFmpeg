@@ -452,7 +452,7 @@ static int amf_copy_buffer(AVCodecContext *avctx, AVPacket *pkt, AMFBuffer *buff
     int64_t          timestamp = AV_NOPTS_VALUE;
     int64_t          size = buffer->pVtbl->GetSize(buffer);
 
-    if ((ret = av_new_packet(pkt, size)) < 0) {
+    if ((ret = ff_get_encode_buffer(avctx, pkt, size, 0)) < 0) {
         return ret;
     }
     memcpy(pkt->data, buffer->pVtbl->GetNative(buffer), size);
@@ -782,3 +782,15 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
     }
     return ret;
 }
+
+const AVCodecHWConfigInternal *const ff_amfenc_hw_configs[] = {
+#if CONFIG_D3D11VA
+    HW_CONFIG_ENCODER_FRAMES(D3D11, D3D11VA),
+    HW_CONFIG_ENCODER_DEVICE(NONE,  D3D11VA),
+#endif
+#if CONFIG_DXVA2
+    HW_CONFIG_ENCODER_FRAMES(DXVA2_VLD, DXVA2),
+    HW_CONFIG_ENCODER_DEVICE(NONE,      DXVA2),
+#endif
+    NULL,
+};

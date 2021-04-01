@@ -828,7 +828,7 @@ static int save_subtitle_set(AVCodecContext *avctx, AVSubtitle *sub, int *got_ou
 
             memcpy(rect->data[0], region->pbuf, region->buf_size);
 
-            if ((clut == &default_clut && ctx->compute_clut == -1) || ctx->compute_clut == 1) {
+            if ((clut == &default_clut && ctx->compute_clut < 0) || ctx->compute_clut == 1) {
                 if (!region->has_computed_clut) {
                     compute_default_clut(ctx, region->computed_clut, rect, rect->w, rect->h);
                     region->has_computed_clut = 1;
@@ -999,7 +999,8 @@ static void dvbsub_parse_pixel_data_block(AVCodecContext *avctx, DVBSubObjectDis
         }
     }
 
-    region->has_computed_clut = 0;
+    if (ctx->compute_clut != -2)
+        region->has_computed_clut = 0;
 }
 
 static int dvbsub_parse_object_segment(AVCodecContext *avctx,
@@ -1052,11 +1053,15 @@ static int dvbsub_parse_object_segment(AVCodecContext *avctx,
             dvbsub_parse_pixel_data_block(avctx, display, block, bfl, 1,
                                             non_modifying_color);
         }
-
-/*  } else if (coding_method == 1) {*/
-
+    } else if (coding_method == 1) {
+        avpriv_report_missing_feature(avctx, "coded as a string of characters");
+        return AVERROR_PATCHWELCOME;
+    } else if (coding_method == 2) {
+        avpriv_report_missing_feature(avctx, "progressive coding of pixels");
+        return AVERROR_PATCHWELCOME;
     } else {
         av_log(avctx, AV_LOG_ERROR, "Unknown object coding %d\n", coding_method);
+        return AVERROR_INVALIDDATA;
     }
 
     return 0;
@@ -1770,7 +1775,7 @@ end:
 #define OFFSET(x) offsetof(DVBSubContext, x)
 static const AVOption options[] = {
     {"compute_edt", "compute end of time using pts or timeout", OFFSET(compute_edt), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, DS},
-    {"compute_clut", "compute clut when not available(-1) or always(1) or never(0)", OFFSET(compute_clut), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, DS},
+    {"compute_clut", "compute clut when not available(-1) or only once (-2) or always(1) or never(0)", OFFSET(compute_clut), AV_OPT_TYPE_BOOL, {.i64 = -1}, -2, 1, DS},
     {"dvb_substream", "", OFFSET(substream), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 63, DS},
     {NULL}
 };

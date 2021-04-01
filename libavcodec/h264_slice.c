@@ -304,9 +304,8 @@ int ff_h264_update_thread_context(AVCodecContext *dst,
     if (dst == src)
         return 0;
 
-    // We can't fail if SPS isn't set at it breaks current skip_frame code
-    //if (!h1->ps.sps)
-    //    return AVERROR_INVALIDDATA;
+    if (inited && !h1->ps.sps)
+        return AVERROR_INVALIDDATA;
 
     if (inited &&
         (h->width                 != h1->width                 ||
@@ -325,29 +324,22 @@ int ff_h264_update_thread_context(AVCodecContext *dst,
 
     // SPS/PPS
     for (i = 0; i < FF_ARRAY_ELEMS(h->ps.sps_list); i++) {
-        av_buffer_unref(&h->ps.sps_list[i]);
-        if (h1->ps.sps_list[i]) {
-            h->ps.sps_list[i] = av_buffer_ref(h1->ps.sps_list[i]);
-            if (!h->ps.sps_list[i])
-                return AVERROR(ENOMEM);
-        }
+        ret = av_buffer_replace(&h->ps.sps_list[i], h1->ps.sps_list[i]);
+        if (ret < 0)
+            return ret;
     }
     for (i = 0; i < FF_ARRAY_ELEMS(h->ps.pps_list); i++) {
-        av_buffer_unref(&h->ps.pps_list[i]);
-        if (h1->ps.pps_list[i]) {
-            h->ps.pps_list[i] = av_buffer_ref(h1->ps.pps_list[i]);
-            if (!h->ps.pps_list[i])
-                return AVERROR(ENOMEM);
-        }
+        ret = av_buffer_replace(&h->ps.pps_list[i], h1->ps.pps_list[i]);
+        if (ret < 0)
+            return ret;
     }
 
-    av_buffer_unref(&h->ps.pps_ref);
+    ret = av_buffer_replace(&h->ps.pps_ref, h1->ps.pps_ref);
+    if (ret < 0)
+        return ret;
     h->ps.pps = NULL;
     h->ps.sps = NULL;
     if (h1->ps.pps_ref) {
-        h->ps.pps_ref = av_buffer_ref(h1->ps.pps_ref);
-        if (!h->ps.pps_ref)
-            return AVERROR(ENOMEM);
         h->ps.pps = (const PPS*)h->ps.pps_ref->data;
         h->ps.sps = h->ps.pps->sps;
     }
@@ -432,12 +424,29 @@ int ff_h264_update_thread_context(AVCodecContext *dst,
 
     h->frame_recovered       = h1->frame_recovered;
 
-    av_buffer_unref(&h->sei.a53_caption.buf_ref);
-    if (h1->sei.a53_caption.buf_ref) {
-        h->sei.a53_caption.buf_ref = av_buffer_ref(h1->sei.a53_caption.buf_ref);
-        if (!h->sei.a53_caption.buf_ref)
-            return AVERROR(ENOMEM);
+    ret = av_buffer_replace(&h->sei.a53_caption.buf_ref, h1->sei.a53_caption.buf_ref);
+    if (ret < 0)
+        return ret;
+
+    for (i = 0; i < h->sei.unregistered.nb_buf_ref; i++)
+        av_buffer_unref(&h->sei.unregistered.buf_ref[i]);
+    h->sei.unregistered.nb_buf_ref = 0;
+
+    if (h1->sei.unregistered.nb_buf_ref) {
+        ret = av_reallocp_array(&h->sei.unregistered.buf_ref,
+                                h1->sei.unregistered.nb_buf_ref,
+                                sizeof(*h->sei.unregistered.buf_ref));
+        if (ret < 0)
+            return ret;
+
+        for (i = 0; i < h1->sei.unregistered.nb_buf_ref; i++) {
+            h->sei.unregistered.buf_ref[i] = av_buffer_ref(h1->sei.unregistered.buf_ref[i]);
+            if (!h->sei.unregistered.buf_ref[i])
+                return AVERROR(ENOMEM);
+            h->sei.unregistered.nb_buf_ref++;
+        }
     }
+    h->sei.unregistered.x264_build = h1->sei.unregistered.x264_build;
 
     if (!h->cur_pic_ptr)
         return 0;
@@ -912,6 +921,11 @@ static int h264_slice_header_init(H264Context *h)
     const SPS *sps = h->ps.sps;
     int i, ret;
 
+    if (!sps) {
+        ret = AVERROR_INVALIDDATA;
+        goto fail;
+    }
+
     ff_set_sar(h->avctx, sps->sar);
     av_pix_fmt_get_chroma_sub_sample(h->avctx->pix_fmt,
                                      &h->chroma_x_shift, &h->chroma_y_shift);
@@ -1325,7 +1339,7 @@ static int h264_export_frame_props(H264Context *h)
             int   ff = h->sei.picture_timing.timecode[i].frame;
 
             tc_sd[i + 1] = av_timecode_get_smpte(h->avctx->framerate, drop, hh, mm, ss, ff);
-            av_timecode_make_smpte_tc_string(tcbuf, tc_sd[i + 1], 0);
+            av_timecode_make_smpte_tc_string2(tcbuf, h->avctx->framerate, tc_sd[i + 1], 0, 0);
             av_dict_set(&out->metadata, "timecode", tcbuf, 0);
         }
         h->sei.picture_timing.timecode_cnt = 0;
@@ -1589,14 +1603,15 @@ static int h264_field_start(H264Context *h, const H264SliceContext *sl,
                 ff_thread_await_progress(&prev->tf, INT_MAX, 0);
                 if (prev->field_picture)
                     ff_thread_await_progress(&prev->tf, INT_MAX, 1);
-                av_image_copy(h->short_ref[0]->f->data,
-                              h->short_ref[0]->f->linesize,
-                              (const uint8_t **)prev->f->data,
-                              prev->f->linesize,
-                              prev->f->format,
-                              prev->f->width,
-                              prev->f->height);
-                h->short_ref[0]->poc = prev->poc + 2;
+                ff_thread_release_buffer(h->avctx, &h->short_ref[0]->tf);
+                h->short_ref[0]->tf.f = h->short_ref[0]->f;
+                ret = ff_thread_ref_frame(&h->short_ref[0]->tf, &prev->tf);
+                if (ret < 0)
+                    return ret;
+                h->short_ref[0]->poc = prev->poc + 2U;
+                ff_thread_report_progress(&h->short_ref[0]->tf, INT_MAX, 0);
+                if (h->short_ref[0]->field_picture)
+                    ff_thread_report_progress(&h->short_ref[0]->tf, INT_MAX, 1);
             } else if (!h->frame_recovered && !h->avctx->hwaccel)
                 ff_color_frame(h->short_ref[0]->f, c);
             h->short_ref[0]->frame_num = h->poc.prev_frame_num;

@@ -298,6 +298,8 @@ static const AVCodecDefault defaults[] = {
     { "b",          "2M"  },
     { "g",          "250" },
     { "slices",     "1"   },
+    { "qmin",       "-1"  },
+    { "qmax",       "-1"  },
     { NULL                },
 };
 static const AVClass hevc_amf_class = {
@@ -318,8 +320,10 @@ AVCodec ff_hevc_amf_encoder = {
     .priv_data_size = sizeof(AmfContext),
     .priv_class     = &hevc_amf_class,
     .defaults       = defaults,
-    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE,
+    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
+                      AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .pix_fmts       = ff_amf_pix_fmts,
     .wrapper_name   = "amf",
+    .hw_configs     = ff_amfenc_hw_configs,
 };

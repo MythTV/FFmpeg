@@ -32,12 +32,14 @@
 
 #include "libavutil/frame.h"
 #include "libavutil/mem.h"
+#include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avcodec.h"
 #include "idctdsp.h"
 #include "internal.h"
 #include "jpegtables.h"
+#include "mathops.h"
 #include "mjpegenc_common.h"
 #include "mjpeg.h"
 
@@ -84,7 +86,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
         const int modified_predictor = y ? s->pred : 1;
         uint8_t *ptr = frame->data[0] + (linesize * y);
 
-        if (pb->buf_end - pb->buf - (put_bits_count(pb) >> 3) < width * 4 * 4) {
+        if (put_bytes_left(pb, 0) < width * 4 * 4) {
             av_log(avctx, AV_LOG_ERROR, "encoded frame too large\n");
             return -1;
         }
@@ -209,7 +211,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 #endif
 
     for (mb_y = 0; mb_y < mb_height; mb_y++) {
-        if (pb->buf_end - pb->buf - (put_bits_count(pb) >> 3) <
+        if (put_bytes_left(pb, 0) <
             mb_width * 4 * 3 * s->hsample[0] * s->vsample[0]) {
             av_log(avctx, AV_LOG_ERROR, "encoded frame too large\n");
             return -1;
@@ -309,7 +311,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
     s->scratch = av_malloc_array(avctx->width + 1, sizeof(*s->scratch));
     if (!s->scratch)
-        goto fail;
+        return AVERROR(ENOMEM);
 
     ff_idctdsp_init(&s->idsp, avctx);
     ff_init_scantable(s->idsp.idct_permutation, &s->scantable,
@@ -327,9 +329,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
                                  avpriv_mjpeg_val_dc);
 
     return 0;
-fail:
-    ljpeg_encode_close(avctx);
-    return AVERROR(ENOMEM);
 }
 
 #define OFFSET(x) offsetof(LJpegEncContext, x)

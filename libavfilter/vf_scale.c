@@ -358,7 +358,7 @@ static int query_formats(AVFilterContext *ctx)
                 return ret;
             }
         }
-        if ((ret = ff_formats_ref(formats, &ctx->inputs[0]->out_formats)) < 0)
+        if ((ret = ff_formats_ref(formats, &ctx->inputs[0]->outcfg.formats)) < 0)
             return ret;
     }
     if (ctx->outputs[0]) {
@@ -372,7 +372,7 @@ static int query_formats(AVFilterContext *ctx)
                 return ret;
             }
         }
-        if ((ret = ff_formats_ref(formats, &ctx->outputs[0]->in_formats)) < 0)
+        if ((ret = ff_formats_ref(formats, &ctx->outputs[0]->incfg.formats)) < 0)
             return ret;
     }
 
@@ -635,8 +635,8 @@ static int scale_slice(AVFilterLink *link, AVFrame *out_buf, AVFrame *cur_pic, s
         int vsub= ((i+1)&2) ? scale->vsub : 0;
          in_stride[i] = cur_pic->linesize[i] * mul;
         out_stride[i] = out_buf->linesize[i] * mul;
-         in[i] = cur_pic->data[i] + ((y>>vsub)+field) * cur_pic->linesize[i];
-        out[i] = out_buf->data[i] +            field  * out_buf->linesize[i];
+         in[i] = FF_PTR_ADD(cur_pic->data[i], ((y>>vsub)+field) * cur_pic->linesize[i]);
+        out[i] = FF_PTR_ADD(out_buf->data[i],            field  * out_buf->linesize[i]);
     }
     if (scale->input_is_pal)
          in[1] = cur_pic->data[1];

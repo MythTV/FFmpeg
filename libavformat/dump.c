@@ -34,6 +34,7 @@
 #include "libavutil/replaygain.h"
 #include "libavutil/spherical.h"
 #include "libavutil/stereo3d.h"
+#include "libavutil/timecode.h"
 
 #include "avformat.h"
 
@@ -407,6 +408,22 @@ static void dump_dovi_conf(void *ctx, const AVPacketSideData *sd)
            dovi->dv_bl_signal_compatibility_id);
 }
 
+static void dump_s12m_timecode(void *ctx, const AVStream *st, const AVPacketSideData *sd)
+{
+    const uint32_t *tc = (const uint32_t *)sd->data;
+
+    if ((sd->size != sizeof(uint32_t) * 4) || (tc[0] > 3)) {
+        av_log(ctx, AV_LOG_ERROR, "invalid data\n");
+        return;
+    }
+
+    for (int j = 1; j <= tc[0]; j++) {
+        char tcbuf[AV_TIMECODE_STR_SIZE];
+        av_timecode_make_smpte_tc_string2(tcbuf, st->avg_frame_rate, tc[j], 0, 0);
+        av_log(ctx, AV_LOG_INFO, "timecode - %s%s", tcbuf, j != tc[0] ? ", " : "");
+    }
+}
+
 static void dump_sidedata(void *ctx, const AVStream *st, const char *indent)
 {
     int i;
@@ -473,6 +490,10 @@ static void dump_sidedata(void *ctx, const AVStream *st, const char *indent)
             av_log(ctx, AV_LOG_INFO, "DOVI configuration record: ");
             dump_dovi_conf(ctx, sd);
             break;
+        case AV_PKT_DATA_S12M_TIMECODE:
+            av_log(ctx, AV_LOG_INFO, "SMPTE ST 12-1:2014: ");
+            dump_s12m_timecode(ctx, st, sd);
+            break;
         default:
             av_log(ctx, AV_LOG_INFO,
                    "unknown side data type %d (%d bytes)", sd->type, sd->size);
@@ -522,7 +543,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     avcodec_string(buf, sizeof(buf), avctx, is_output);
     avcodec_free_context(&avctx);
 
-    av_log(NULL, AV_LOG_INFO, "    Stream #%d:%d", index, i);
+    av_log(NULL, AV_LOG_INFO, "  Stream #%d:%d", index, i);
 
     /* the pid is an important information, so we display it */
     /* XXX: add a generic system */
@@ -665,6 +686,8 @@ void av_dump_format(AVFormatContext *ic, int index,
         av_log(NULL, AV_LOG_INFO, "\n");
     }
 
+    if (ic->nb_chapters)
+        av_log(NULL, AV_LOG_INFO, "  Chapters:\n");
     for (i = 0; i < ic->nb_chapters; i++) {
         const AVChapter *ch = ic->chapters[i];
         av_log(NULL, AV_LOG_INFO, "    Chapter #%d:%d: ", index, i);
@@ -673,7 +696,7 @@ void av_dump_format(AVFormatContext *ic, int index,
         av_log(NULL, AV_LOG_INFO,
                "end %f\n", ch->end * av_q2d(ch->time_base));
 
-        dump_metadata(NULL, ch->metadata, "    ");
+        dump_metadata(NULL, ch->metadata, "      ");
     }
 
     if (ic->nb_programs) {

@@ -372,8 +372,7 @@ static int svq1_encode_plane(SVQ1EncContext *s, int plane,
             int score[4]     = { 0, 0, 0, 0 }, best;
             uint8_t *temp    = s->scratchbuf;
 
-            if (s->pb.buf_end - s->pb.buf -
-                (put_bits_count(&s->pb) >> 3) < 3000) { // FIXME: check size
+            if (put_bytes_left(&s->pb, 0) < 3000) { // FIXME: check size
                 av_log(s->avctx, AV_LOG_ERROR, "encoded frame too large\n");
                 return -1;
             }
@@ -472,7 +471,7 @@ static int svq1_encode_plane(SVQ1EncContext *s, int plane,
 
             if (best != 2)
             for (i = 5; i >= 0; i--)
-                avpriv_copy_bits(&s->pb, reorder_buffer[best][i],
+                ff_copy_bits(&s->pb, reorder_buffer[best][i],
                                  count[best][i]);
             if (best == 0)
                 s->hdsp.put_pixels_tab[0][0](decoded, temp, stride, 16);
@@ -647,13 +646,13 @@ FF_ENABLE_DEPRECATION_WARNINGS
         }
     }
 
-    // avpriv_align_put_bits(&s->pb);
+    // align_put_bits(&s->pb);
     while (put_bits_count(&s->pb) & 31)
         put_bits(&s->pb, 1, 0);
 
     flush_put_bits(&s->pb);
 
-    pkt->size = put_bits_count(&s->pb) / 8;
+    pkt->size = put_bytes_output(&s->pb);
     if (s->pict_type == AV_PICTURE_TYPE_I)
         pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;

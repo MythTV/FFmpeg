@@ -130,6 +130,7 @@ static int init_context_defaults(AVCodecContext *s, const AVCodec *codec)
     s->pkt_timebase        = (AVRational){ 0, 1 };
     s->get_buffer2         = avcodec_default_get_buffer2;
     s->get_format          = avcodec_default_get_format;
+    s->get_encode_buffer   = avcodec_default_get_encode_buffer;
     s->execute             = avcodec_default_execute;
     s->execute2            = avcodec_default_execute2;
     s->sample_aspect_ratio = (AVRational){0,1};
@@ -139,12 +140,9 @@ static int init_context_defaults(AVCodecContext *s, const AVCodec *codec)
 
     s->reordered_opaque    = AV_NOPTS_VALUE;
     if(codec && codec->priv_data_size){
-        if(!s->priv_data){
-            s->priv_data= av_mallocz(codec->priv_data_size);
-            if (!s->priv_data) {
-                return AVERROR(ENOMEM);
-            }
-        }
+        s->priv_data = av_mallocz(codec->priv_data_size);
+        if (!s->priv_data)
+            return AVERROR(ENOMEM);
         if(codec->priv_class){
             *(const AVClass**)s->priv_data = codec->priv_class;
             av_opt_set_defaults(s->priv_data);
@@ -312,6 +310,7 @@ const AVClass *avcodec_get_class(void)
     return &av_codec_context_class;
 }
 
+#if FF_API_GET_FRAME_CLASS
 #define FOFFSET(x) offsetof(AVFrame,x)
 
 static const AVOption frame_options[]={
@@ -338,6 +337,7 @@ const AVClass *avcodec_get_frame_class(void)
 {
     return &av_frame_class;
 }
+#endif
 
 #define SROFFSET(x) offsetof(AVSubtitleRect,x)
 
