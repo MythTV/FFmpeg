@@ -36,13 +36,13 @@ fftools/ffprobe.o fftools/cmdutils.o: libavutil/ffversion.h | fftools
 OUTDIRS += fftools
 
 # ${MYTHPROGS}:
-mythffmpeg:
+mythffmpeg: ffmpeg_g
 	cp ffmpeg_g mythffmpeg
 
-mythffprobe:
+mythffprobe: ffprobe_g
 	cp ffprobe_g mythffprobe
 
-mythffplay:
+mythffplay: ffplay_g
 	cp ffplay_g mythffplay
 
 ifdef AVPROGS
